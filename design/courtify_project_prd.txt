@@ -1,0 +1,49 @@
+# Project Brief: COURTIFY - Elite Personal Finance Management
+
+## 1. Project Overview
+**COURTIFY** is a high-fidelity, premium personal finance management platform designed for investors and high-net-worth individuals who require "Elite Precision" in tracking their wealth. The application focuses on sophisticated asset tracking, loan management, and financial planning within a unified, high-contrast dark-mode interface.
+
+## 2. Core Value Proposition
+- **High-Precision Tracking**: Detailed ledgers for diverse assets including Gold, Silver, Real Estate, and Savings.
+- **Centralized Management**: Unified views for loans, debts, and financial events.
+- **Professional Aesthetic**: A "Midnight Velocity" design language that emphasizes focus, speed, and premium status.
+
+## 3. Target Audience
+- Individual investors managing diverse portfolios.
+- Professionals tracking personal lending and borrowing.
+- Users seeking a high-performance, dark-themed financial dashboard.
+
+## 4. Feature Requirements
+
+### 4.1. Dashboard & Analytics
+- **Overview**: Real-time visualization of net worth, asset distribution, and portfolio health.
+- **Analytics**: Trend analysis and predictive modeling for future financial positions.
+
+### 4.2. Asset Ledger
+- **Multi-Asset Support**: Specialized entry forms for different asset classes.
+- **Gold/Silver Ledger**: Track weight, purity, and purchase price.
+- **Investment Tracking**: Detailed records of principal amounts, interest rates, and maturity dates.
+
+### 4.3. Loan & Debt Management
+- **Counterparty Tracking**: Manage who you've lent to or borrowed from.
+- **Status Monitoring**: Visual indicators for Active, Overdue, and Settled transactions.
+- **Repayment Scheduling**: Track due dates and installment plans.
+
+### 4.4. Financial Calendar
+- **Event Logging**: Schedule investment milestones, debt repayments, and savings goals.
+- **Reminders**: Integrated notification system for upcoming financial obligations.
+
+### 4.5. System Configuration
+- **Centralized Institutions**: Manage a list of banks and financial firms in Settings to populate dropdowns app-wide.
+- **Localization**: Multi-currency support (defaulting to VND) and timezone-aware inputs.
+
+## 5. Design System: Midnight Velocity
+- **Theme**: Ultra-dark mode (Surface: #131313).
+- **Primary Color**: Sport Green (#22c55e) for actions and positive growth.
+- **Typography**: Inter (Sans-serif) for high readability and professional tone.
+- **Shape**: Rounded Eight (8px border-radius) for a modern, accessible feel.
+
+## 6. Technical Constraints
+- **Device**: Optimized for Desktop (high-density information display).
+- **Precision**: 64-bit float precision for all currency calculations.
+- **Locale**: Primary focus on Asia/Ho_Chi_Minh (GMT+07:00).
