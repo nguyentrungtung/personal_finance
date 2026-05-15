@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, '001-*']
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  lint:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: 'courtify/pnpm-lock.yaml'
+      - name: Install dependencies
+        working-directory: courtify
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        working-directory: courtify
+        run: pnpm lint
+      - name: Typecheck backend
+        working-directory: courtify/backend
+        run: pnpm exec tsc --noEmit
+      - name: Typecheck frontend
+        working-directory: courtify/frontend
+        run: pnpm exec tsc --noEmit
+
+  test:
+    name: Unit & Contract Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: 'courtify/pnpm-lock.yaml'
+      - name: Install dependencies
+        working-directory: courtify
+        run: pnpm install --frozen-lockfile
+      - name: Run backend tests with coverage
+        working-directory: courtify/backend
+        run: pnpm test:coverage
+      - name: Run frontend unit tests
+        working-directory: courtify/frontend
+        run: pnpm test:coverage
+
+  e2e:
+    name: E2E Tests (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: 'courtify/pnpm-lock.yaml'
+      - name: Install dependencies
+        working-directory: courtify
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright browsers
+        working-directory: courtify/frontend
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Start backend
+        working-directory: courtify/backend
+        env:
+          DB_PATH: ':memory:'
+          JWT_SECRET: ci-test-secret-at-least-32-chars-long
+          JWT_EXPIRES_IN: 15m
+          UPLOAD_PATH: /tmp/uploads
+          INIT_EMAIL: test@example.com
+          INIT_PASSWORD: TestPassword123!
+        run: pnpm start &
+      - name: Run E2E tests
+        working-directory: courtify/frontend
+        env:
+          VITE_API_URL: http://localhost:5000
+        run: pnpm test:e2e
+
+  performance:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: 'courtify/pnpm-lock.yaml'
+      - name: Install dependencies
+        working-directory: courtify
+        run: pnpm install --frozen-lockfile
+      - name: Run performance contract tests
+        working-directory: courtify/backend
+        env:
+          DB_PATH: ':memory:'
+          JWT_SECRET: ci-test-secret-at-least-32-chars-long
+          JWT_EXPIRES_IN: 15m
+          UPLOAD_PATH: /tmp/uploads
+          INIT_EMAIL: test@example.com
+          INIT_PASSWORD: TestPassword123!
+        run: pnpm exec vitest run tests/contract/dashboard.contract.test.ts --reporter=verbose

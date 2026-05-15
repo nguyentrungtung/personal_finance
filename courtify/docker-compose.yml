@@ -1,0 +1,46 @@
+version: '3.9'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - '5001:5000'
+    environment:
+      - NODE_ENV=production
+      - DB_PATH=/app/data/courtify.db
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-15m}
+      - UPLOAD_PATH=/app/uploads
+      - INIT_EMAIL=${INIT_EMAIL}
+      - INIT_PASSWORD=${INIT_PASSWORD}
+    volumes:
+      - sqlitedata:/app/data
+      - uploads:/app/uploads
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:5000/api/v1/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        - VITE_API_URL=${VITE_API_URL:-http://localhost:5001}
+    ports:
+      - '3000:3000'
+    environment:
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:5001}
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  sqlitedata:
+    name: courtify_sqlitedata
+  uploads:
+    name: courtify_uploads
