@@ -178,7 +178,7 @@
     "entryTypes": {
       "crypto_purchase": "Mua tiền mã hóa",
       "real_estate_appraisal": "Định giá BĐS",
-      "tax_transfer": "Chuyển thuế",
+      "tax_transfer": "Nộp thuế",
       "savings_deposit": "Gửi tiết kiệm",
       "loan_repayment": "Trả nợ",
       "other": "Khác"
@@ -196,14 +196,16 @@
     },
     "assetClasses": {
       "metals": "Kim loại",
-      "markets": "Thị trường",
-      "liquidity": "Thanh khoản",
+      "markets": "Cổ phiếu / Crypto",
+      "liquidity": "Tiền mặt & Tiết kiệm",
       "real_estate": "Bất động sản"
     },
     "institutionTypes": {
       "bank": "Ngân hàng",
       "brokerage": "Chứng khoán",
       "crypto_exchange": "Sàn tiền mã hóa",
+      "gold_silver": "Vàng/ bạc",
+      "real_estate": "Bất động sản",
       "other": "Khác"
     },
     "assetSubtypes": {
@@ -420,6 +422,37 @@
       "3day": "Trước 3 ngày",
       "7day": "Trước 7 ngày",
       "30day": "Trước 30 ngày"
+    },
+    "scheduler": {
+      "title": "Lịch tác vụ",
+      "smtpTitle": "Email (SMTP)",
+      "provider": "Nhà cung cấp",
+      "gmail": "Gmail",
+      "custom": "SMTP tùy chỉnh",
+      "host": "Host",
+      "port": "Cổng",
+      "secure": "TLS",
+      "user": "Tên đăng nhập",
+      "password": "Mật khẩu / App Password",
+      "fromName": "Tên hiển thị",
+      "fromEmail": "Email gửi",
+      "testEmail": "Gửi email thử",
+      "testTo": "Gửi đến",
+      "jobsTitle": "Tác vụ định kỳ",
+      "jobName": "Tên",
+      "cronExpr": "Biểu thức Cron",
+      "enabled": "Kích hoạt",
+      "lastRun": "Lần chạy cuối",
+      "runNow": "Chạy ngay",
+      "presets": "Mẫu sẵn có",
+      "statusOk": "Thành công",
+      "statusError": "Lỗi",
+      "never": "Chưa chạy",
+      "saving": "Đang lưu...",
+      "saved": "Đã lưu",
+      "running": "Đang chạy...",
+      "testSent": "Đã gửi email thử",
+      "testFailed": "Gửi thất bại"
     }
   },
   "login": {

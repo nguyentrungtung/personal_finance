@@ -49,13 +49,13 @@ export async function runSeed(db: Database.Database): Promise<void> {
     { name: 'OKX', type: 'crypto_exchange', channels: '["markets"]' },
     { name: 'Bybit', type: 'crypto_exchange', channels: '["markets"]' },
     { name: 'Remitano', type: 'crypto_exchange', channels: '["markets"]' },
-    { name: 'SJC', type: 'other', channels: '["metals"]' },
-    { name: 'PNJ', type: 'other', channels: '["metals"]' },
-    { name: 'DOJI', type: 'other', channels: '["metals"]' },
-    { name: 'Bảo Tín Minh Châu', type: 'other', channels: '["metals"]' },
-    { name: 'Vinhomes', type: 'other', channels: '["real_estate"]' },
-    { name: 'Masterise Homes', type: 'other', channels: '["real_estate"]' },
-    { name: 'Nam Long Group', type: 'other', channels: '["real_estate"]' },
+    { name: 'SJC', type: 'gold_silver', channels: '["metals"]' },
+    { name: 'PNJ', type: 'gold_silver', channels: '["metals"]' },
+    { name: 'DOJI', type: 'gold_silver', channels: '["metals"]' },
+    { name: 'Bảo Tín Minh Châu', type: 'gold_silver', channels: '["metals"]' },
+    { name: 'Vinhomes', type: 'real_estate', channels: '["real_estate"]' },
+    { name: 'Masterise Homes', type: 'real_estate', channels: '["real_estate"]' },
+    { name: 'Nam Long Group', type: 'real_estate', channels: '["real_estate"]' },
   ];
   const insertInst = db.prepare(
     'INSERT OR IGNORE INTO institutions (name, type, supported_channels) VALUES (?, ?, ?)'
@@ -343,6 +343,15 @@ export async function runSeed(db: Database.Database): Promise<void> {
   for (const [date, total, m, mk, liq, re] of snapshotData) {
     upsertSnapshot.run(date, total, m, mk, liq, re);
   }
+
+  // ── Default scheduled jobs (disabled until SMTP is configured) ───
+  const insertJob = db.prepare(`
+    INSERT OR IGNORE INTO scheduled_jobs (name, job_type, cron_expression, enabled)
+    VALUES (?, ?, ?, 0)
+  `);
+  insertJob.run('Nhắc nhở sự kiện lịch', 'calendar_reminder', '30 8 * * *');
+  insertJob.run('Dọn dẹp dữ liệu cũ', 'data_cleanup', '0 2 * * 0');
+  insertJob.run('Báo cáo tổng hợp đêm', 'nightly_summary', '0 23 * * *');
 
   console.warn('[seed] Seed complete ✓');
 }

@@ -15,11 +15,13 @@ import { createInstitutionsModule } from './modules/institutions/index.js';
 import { createSettingsModule } from './modules/settings/index.js';
 import { createAnalyticsModule } from './modules/analytics/index.js';
 import { createCalendarModule } from './modules/calendar/index.js';
+import { createSchedulerModule } from './modules/scheduler/index.js';
+import type { CronEngine } from './infrastructure/scheduler/cron.engine.js';
 
 const UPLOAD_PATH = process.env.UPLOAD_PATH ?? path.join(process.cwd(), 'uploads');
 const ALLOWED_ORIGIN = process.env.FRONTEND_URL ?? 'http://localhost:3000';
 
-export function createApp() {
+export function createApp(cronEngine: CronEngine) {
   const db = getDb();
   const app = express();
 
@@ -45,6 +47,7 @@ export function createApp() {
   const settings = createSettingsModule(db);
   const analytics = createAnalyticsModule(db);
   const calendar = createCalendarModule(db);
+  const scheduler = createSchedulerModule(db, cronEngine);
 
   // ─── Health check ─────────────────────────────────────────────────────────────
   app.get('/api/v1/health', (_req, res) => {
@@ -63,6 +66,7 @@ export function createApp() {
   app.use('/api/v1/settings', settings.router);
   app.use('/api/v1/analytics', analytics.router);
   app.use('/api/v1/calendar', calendar.router);
+  app.use('/api/v1/scheduler', scheduler.router);
 
   // ─── Global error handler ─────────────────────────────────────────────────────
   app.use(errorHandler);

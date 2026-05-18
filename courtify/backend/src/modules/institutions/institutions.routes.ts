@@ -8,7 +8,7 @@ import type { InstitutionsService } from './institutions.service.js';
 
 const InstitutionSchema = z.object({
   name: z.string().min(1).max(200),
-  type: z.enum(['bank', 'brokerage', 'crypto_exchange', 'other']),
+  type: z.enum(['bank', 'brokerage', 'crypto_exchange', 'gold_silver', 'real_estate', 'other']),
   supported_channels: z.string().optional(), // JSON string array
 });
 

@@ -178,7 +178,7 @@
     "entryTypes": {
       "crypto_purchase": "Crypto Purchase",
       "real_estate_appraisal": "Real Estate Appraisal",
-      "tax_transfer": "Tax Transfer",
+      "tax_transfer": "Tax Payment",
       "savings_deposit": "Savings Deposit",
       "loan_repayment": "Loan Repayment",
       "other": "Other"
@@ -196,14 +196,16 @@
     },
     "assetClasses": {
       "metals": "Metals",
-      "markets": "Markets",
-      "liquidity": "Liquidity",
+      "markets": "Stocks/Crypto",
+      "liquidity": "Cash & Savings",
       "real_estate": "Real Estate"
     },
     "institutionTypes": {
       "bank": "Bank",
       "brokerage": "Brokerage",
       "crypto_exchange": "Crypto Exchange",
+      "gold_silver": "Gold/Silver",
+      "real_estate": "Real Estate",
       "other": "Other"
     },
     "assetSubtypes": {
@@ -420,6 +422,37 @@
       "3day": "3 days advance",
       "7day": "7 days advance",
       "30day": "30 days advance"
+    },
+    "scheduler": {
+      "title": "Scheduled Tasks",
+      "smtpTitle": "Email (SMTP)",
+      "provider": "Provider",
+      "gmail": "Gmail",
+      "custom": "Custom SMTP",
+      "host": "Host",
+      "port": "Port",
+      "secure": "TLS",
+      "user": "Username",
+      "password": "Password / App Password",
+      "fromName": "From Name",
+      "fromEmail": "From Email",
+      "testEmail": "Send test email",
+      "testTo": "Send to",
+      "jobsTitle": "Cron Jobs",
+      "jobName": "Name",
+      "cronExpr": "Cron Expression",
+      "enabled": "Active",
+      "lastRun": "Last Run",
+      "runNow": "Run now",
+      "presets": "Presets",
+      "statusOk": "OK",
+      "statusError": "Error",
+      "never": "Never run",
+      "saving": "Saving...",
+      "saved": "Saved",
+      "running": "Running...",
+      "testSent": "Test email sent",
+      "testFailed": "Test failed"
     }
   },
   "login": {

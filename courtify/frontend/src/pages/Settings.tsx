@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ChevronDown, Plus, X, Mail, Globe } from 'lucide-react';
+import { ChevronDown, Plus, X, Mail, Globe, Play, RefreshCw } from 'lucide-react';
 import { RegionalWizardModal } from '../components/settings/RegionalWizardModal';
 import type { CountryPreset } from '../lib/countryPresets';
 import { apiFetch, ApiError } from '../lib/api';
@@ -63,7 +63,7 @@ type ProfileForm = z.infer<typeof ProfileSchema>;
 
 const InstitutionSchema = z.object({
   name: z.string().min(1, 'Required').max(200),
-  type: z.enum(['bank', 'brokerage', 'crypto_exchange', 'other']),
+  type: z.enum(['bank', 'brokerage', 'crypto_exchange', 'gold_silver', 'real_estate', 'other']),
   supported_channels: z.string().optional(),
 });
 type InstitutionForm = z.infer<typeof InstitutionSchema>;
@@ -206,7 +206,7 @@ function InstitutionModal({ existing, onClose, onSaved }: {
           <div>
             <label className="block text-xs text-text-secondary mb-1 uppercase tracking-wide">{t('settings.institutions.type')}</label>
             <select {...register('type')} className="w-full bg-surface border border-border-subtle rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:ring-1 focus:ring-brand-green">
-              {(['bank', 'brokerage', 'crypto_exchange', 'other'] as const).map(v => (
+              {(['bank', 'brokerage', 'crypto_exchange', 'gold_silver', 'real_estate', 'other'] as const).map(v => (
                 <option key={v} value={v}>{t(`enums.institutionTypes.${v}` as any)}</option>
               ))}
             </select>
@@ -389,6 +389,245 @@ function TwoFADisableModal({ onClose, onDisabled }: { onClose: () => void; onDis
   );
 }
 
+// ─── Scheduler Types ──────────────────────────────────────────────────────────
+interface ScheduledJob {
+  id: number; name: string; job_type: string;
+  cron_expression: string; enabled: boolean;
+  last_run_at: string | null; last_run_status: string | null; last_run_log: string | null;
+}
+interface SmtpConfig {
+  provider: 'gmail' | 'custom';
+  host: string | null; port: number | null; secure: boolean;
+  user: string | null; password: string | null;
+  from_name: string; from_email: string | null;
+}
+
+const CRON_PRESETS = [
+  { label: '8:30 sáng hàng ngày', value: '30 8 * * *' },
+  { label: 'Hàng tuần Chủ nhật 2AM', value: '0 2 * * 0' },
+  { label: 'Hàng đêm 23:00', value: '0 23 * * *' },
+  { label: 'Mỗi giờ', value: '0 * * * *' },
+];
+
+const JOB_TYPE_LABELS: Record<string, string> = {
+  calendar_reminder: '📅 Nhắc lịch',
+  data_cleanup: '🧹 Dọn dẹp',
+  nightly_summary: '📊 Tổng hợp',
+};
+
+// ─── Scheduler Section ────────────────────────────────────────────────────────
+function SchedulerSection() {
+  const { t } = useTranslation();
+  const { success, error: toastError } = useToast();
+  const [smtp, setSmtp] = useState<SmtpConfig | null>(null);
+  const [jobs, setJobs] = useState<ScheduledJob[]>([]);
+  const [smtpDraft, setSmtpDraft] = useState<Partial<SmtpConfig>>({});
+  const [testTo, setTestTo] = useState('');
+  const [smtpSaving, setSmtpSaving] = useState(false);
+  const [testSending, setTestSending] = useState(false);
+  const [runningId, setRunningId] = useState<number | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [smtpRes, jobsRes] = await Promise.all([
+          apiFetch<{ data: SmtpConfig }>('/api/v1/scheduler/smtp'),
+          apiFetch<{ data: ScheduledJob[] }>('/api/v1/scheduler/jobs'),
+        ]);
+        setSmtp(smtpRes.data);
+        setSmtpDraft(smtpRes.data);
+        setJobs(jobsRes.data ?? []);
+      } catch { /* ignore — scheduler not yet configured */ }
+    })();
+  }, []);
+
+  const provider = (smtpDraft.provider ?? smtp?.provider ?? 'gmail') as 'gmail' | 'custom';
+
+  const saveSmtp = async () => {
+    setSmtpSaving(true);
+    try {
+      const res = await apiFetch<{ data: SmtpConfig }>('/api/v1/scheduler/smtp', {
+        method: 'PUT', body: JSON.stringify(smtpDraft),
+      });
+      setSmtp(res.data);
+      setSmtpDraft(res.data);
+      success(t('settings.scheduler.saved'));
+    } catch (e) {
+      toastError(e instanceof ApiError ? e.message : 'Lỗi lưu SMTP');
+    } finally { setSmtpSaving(false); }
+  };
+
+  const sendTest = async () => {
+    if (!testTo) return;
+    setTestSending(true);
+    try {
+      await apiFetch('/api/v1/scheduler/smtp/test', { method: 'POST', body: JSON.stringify({ to: testTo }) });
+      success(t('settings.scheduler.testSent'));
+    } catch (e) {
+      toastError(e instanceof ApiError ? e.message : t('settings.scheduler.testFailed'));
+    } finally { setTestSending(false); }
+  };
+
+  const updateJob = async (id: number, patch: { name?: string; cron_expression?: string; enabled?: boolean }) => {
+    try {
+      const res = await apiFetch<{ data: ScheduledJob }>(`/api/v1/scheduler/jobs/${id}`, {
+        method: 'PUT', body: JSON.stringify(patch),
+      });
+      setJobs(prev => prev.map(j => j.id === id ? res.data : j));
+    } catch (e) {
+      toastError(e instanceof ApiError ? e.message : 'Lỗi cập nhật tác vụ');
+    }
+  };
+
+  const runNow = async (id: number) => {
+    setRunningId(id);
+    try {
+      const res = await apiFetch<{ data: { status: string; log: string } }>(`/api/v1/scheduler/jobs/${id}/run`, { method: 'POST' });
+      const status = res.data.status === 'ok' ? '✅' : '❌';
+      success(`${status} ${res.data.log?.slice(0, 80) ?? 'Done'}`);
+      setJobs(prev => prev.map(j => j.id === id ? { ...j, last_run_status: res.data.status, last_run_at: new Date().toISOString() } : j));
+    } catch (e) {
+      toastError(e instanceof ApiError ? e.message : 'Lỗi chạy tác vụ');
+    } finally { setRunningId(null); }
+  };
+
+  const field = (label: string, children: React.ReactNode) => (
+    <div className="space-y-1">
+      <label className="block text-xs text-text-secondary uppercase tracking-wide">{label}</label>
+      {children}
+    </div>
+  );
+
+  const inp = 'w-full bg-surface border border-border-subtle rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-brand-green';
+
+  return (
+    <Section icon="⏰" title={t('settings.scheduler.title')}>
+      <div className="space-y-6">
+        {/* SMTP config */}
+        <div>
+          <p className="text-xs text-text-secondary uppercase tracking-wide font-semibold mb-3">{t('settings.scheduler.smtpTitle')}</p>
+          <div className="grid grid-cols-2 gap-4">
+            {field(t('settings.scheduler.provider'),
+              <select value={provider} onChange={e => setSmtpDraft(d => ({ ...d, provider: e.target.value as 'gmail' | 'custom' }))} className={inp}>
+                <option value="gmail">{t('settings.scheduler.gmail')}</option>
+                <option value="custom">{t('settings.scheduler.custom')}</option>
+              </select>
+            )}
+            {field(t('settings.scheduler.fromName'),
+              <input type="text" value={smtpDraft.from_name ?? ''} onChange={e => setSmtpDraft(d => ({ ...d, from_name: e.target.value }))} placeholder="Courtify" className={inp} />
+            )}
+            {field(t('settings.scheduler.user'),
+              <input type="text" value={smtpDraft.user ?? ''} onChange={e => setSmtpDraft(d => ({ ...d, user: e.target.value }))} placeholder="your@gmail.com" className={inp} />
+            )}
+            {field(t('settings.scheduler.password'),
+              <input type="password" value={smtpDraft.password ?? ''} onChange={e => setSmtpDraft(d => ({ ...d, password: e.target.value }))} placeholder="••••••••" className={inp} />
+            )}
+            {provider === 'custom' && <>
+              {field(t('settings.scheduler.host'),
+                <input type="text" value={smtpDraft.host ?? ''} onChange={e => setSmtpDraft(d => ({ ...d, host: e.target.value }))} placeholder="smtp.example.com" className={inp} />
+              )}
+              {field(t('settings.scheduler.port'),
+                <input type="number" value={smtpDraft.port ?? ''} onChange={e => setSmtpDraft(d => ({ ...d, port: Number(e.target.value) }))} placeholder="587" className={inp} />
+              )}
+              <div className="col-span-2 flex items-center gap-3">
+                <button type="button" onClick={() => setSmtpDraft(d => ({ ...d, secure: !d.secure }))}
+                  className={`w-9 h-5 rounded-full transition-colors flex items-center px-0.5 ${smtpDraft.secure ? 'bg-brand-green justify-end' : 'bg-surface-input border border-border-subtle justify-start'}`}>
+                  <div className="w-4 h-4 rounded-full bg-white" />
+                </button>
+                <span className="text-sm text-text-primary">{t('settings.scheduler.secure')} (TLS/SSL)</span>
+              </div>
+            </>}
+            {field(t('settings.scheduler.fromEmail'),
+              <input type="email" value={smtpDraft.from_email ?? ''} onChange={e => setSmtpDraft(d => ({ ...d, from_email: e.target.value }))} placeholder="noreply@example.com" className={inp} />
+            )}
+          </div>
+          <div className="flex items-end gap-3 mt-4">
+            <button type="button" onClick={() => void saveSmtp()} disabled={smtpSaving}
+              className="px-4 py-2 bg-brand-green text-black text-sm font-medium rounded-lg disabled:opacity-50 flex items-center gap-2">
+              {smtpSaving ? <RefreshCw size={14} className="animate-spin" /> : null}
+              {smtpSaving ? t('settings.scheduler.saving') : '💾 ' + t('settings.scheduler.saved').replace('Đã ', 'Lưu ')}
+            </button>
+            <div className="flex-1 flex gap-2">
+              <input type="email" value={testTo} onChange={e => setTestTo(e.target.value)}
+                placeholder={t('settings.scheduler.testTo') + '...'}
+                className={inp + ' flex-1'} />
+              <button type="button" onClick={() => void sendTest()} disabled={testSending || !testTo}
+                className="px-4 py-2 bg-surface border border-border-subtle text-text-primary text-sm rounded-lg hover:bg-white/5 disabled:opacity-50 flex items-center gap-2">
+                {testSending ? <RefreshCw size={14} className="animate-spin" /> : <Mail size={14} />}
+                {t('settings.scheduler.testEmail')}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Jobs table */}
+        <div>
+          <p className="text-xs text-text-secondary uppercase tracking-wide font-semibold mb-3">{t('settings.scheduler.jobsTitle')}</p>
+          <div className="space-y-3">
+            {jobs.map(job => (
+              <div key={job.id} className="p-4 bg-surface rounded-xl border border-border-subtle space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-brand-green/10 text-brand-green border border-brand-green/20 whitespace-nowrap">
+                      {JOB_TYPE_LABELS[job.job_type] ?? job.job_type}
+                    </span>
+                    <span className="text-sm text-text-primary truncate">{job.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button type="button" onClick={() => void runNow(job.id)} disabled={runningId === job.id}
+                      className="px-3 py-1.5 text-xs bg-surface border border-border-subtle rounded-lg hover:bg-white/5 disabled:opacity-50 flex items-center gap-1.5">
+                      {runningId === job.id ? <RefreshCw size={12} className="animate-spin" /> : <Play size={12} />}
+                      {t('settings.scheduler.runNow')}
+                    </button>
+                    <button type="button" onClick={() => void updateJob(job.id, { enabled: !job.enabled })}
+                      aria-label={job.enabled ? 'Disable job' : 'Enable job'}
+                      className={`w-10 h-6 rounded-full transition-colors flex items-center px-1 ${job.enabled ? 'bg-brand-green justify-end' : 'bg-surface-input border border-border-subtle justify-start'}`}>
+                      <div className="w-4 h-4 rounded-full bg-white" />
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-end gap-3">
+                  <div className="flex-1 space-y-1">
+                    <label className="text-xs text-text-secondary">{t('settings.scheduler.cronExpr')}</label>
+                    <input type="text" value={job.cron_expression}
+                      onChange={e => setJobs(prev => prev.map(j => j.id === job.id ? { ...j, cron_expression: e.target.value } : j))}
+                      onBlur={e => void updateJob(job.id, { cron_expression: e.target.value })}
+                      className={inp + ' font-mono text-xs'} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-text-secondary">{t('settings.scheduler.presets')}</label>
+                    <select className={inp + ' text-xs'} value=""
+                      onChange={e => { if (e.target.value) void updateJob(job.id, { cron_expression: e.target.value }); }}>
+                      <option value="">— chọn —</option>
+                      {CRON_PRESETS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 pt-1 border-t border-border-subtle">
+                  <span className="text-xs text-text-muted">{t('settings.scheduler.lastRun')}:</span>
+                  {job.last_run_at ? (
+                    <>
+                      <span className="text-xs text-text-secondary">{new Date(job.last_run_at).toLocaleString('vi-VN')}</span>
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${job.last_run_status === 'ok' ? 'bg-brand-green/10 text-brand-green' : 'bg-red-500/10 text-red-400'}`}>
+                        {job.last_run_status === 'ok' ? t('settings.scheduler.statusOk') : t('settings.scheduler.statusError')}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-xs text-text-muted italic">{t('settings.scheduler.never')}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+            {jobs.length === 0 && (
+              <p className="text-sm text-text-muted italic text-center py-4">Chưa có tác vụ nào. Khởi động lại server để nạp dữ liệu mặc định.</p>
+            )}
+          </div>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
 // ─── Settings Page ────────────────────────────────────────────────────────────
 export default function Settings() {
   const { t, i18n } = useTranslation();
@@ -425,7 +664,7 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [notifDays, setNotifDays] = useState<number[]>([1, 3, 7]);
-  const [activeInstTab, setActiveInstTab] = useState<'bank' | 'brokerage' | 'crypto_exchange' | 'other'>('bank');
+  const [activeInstTab, setActiveInstTab] = useState<'bank' | 'brokerage' | 'crypto_exchange' | 'gold_silver' | 'real_estate' | 'other'>('bank');
 
   const { register, handleSubmit, reset: resetProfile, formState: { errors: profileErrors } } = useForm<ProfileForm>({ resolver: zodResolver(ProfileSchema) });
 
@@ -737,7 +976,7 @@ export default function Settings() {
             }>
             <p className="text-xs text-text-secondary mb-3">{t('settings.institutions.description')}</p>
             <div className="flex space-x-1 bg-surface rounded-lg p-1 mb-4 w-fit">
-              {(['bank', 'brokerage', 'crypto_exchange', 'other'] as const).map(type => (
+              {(['bank', 'brokerage', 'crypto_exchange', 'gold_silver', 'real_estate', 'other'] as const).map(type => (
                 <button key={type} type="button" onClick={() => setActiveInstTab(type)}
                   className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${activeInstTab === type ? 'bg-surface-card text-brand-green shadow-sm border border-border-subtle' : 'text-text-secondary hover:text-text-primary'}`}>
                   {t(`enums.institutionTypes.${type}` as any, { defaultValue: type })}
@@ -863,6 +1102,11 @@ export default function Settings() {
               </div>
             </div>
           </Section>
+        </div>
+
+        {/* ── Row 6: Scheduler ── */}
+        <div className="mb-6">
+          <SchedulerSection />
         </div>
 
         {/* ── Save Bar ── */}
