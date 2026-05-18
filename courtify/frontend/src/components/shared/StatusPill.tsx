@@ -18,6 +18,8 @@ const STATUS_CONFIG: Record<string, { className: string }> = {
   appraisal: { className: 'bg-brand-amber/15 text-brand-amber border-brand-amber/30' },
   overdue: { className: 'bg-brand-amber/15 text-brand-amber border-brand-amber/30' },
   matured: { className: 'bg-brand-amber/15 text-brand-amber border-brand-amber/30' },
+  voided:   { className: 'bg-brand-red/15 text-brand-red border-brand-red/30' },
+  reversed: { className: 'bg-purple-500/15 text-purple-400 border-purple-500/30' },
 };
 
 export function StatusPill({ status, className }: StatusPillProps) {

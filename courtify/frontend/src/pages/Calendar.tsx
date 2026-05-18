@@ -73,6 +73,10 @@ export default function Calendar() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
 
+  // ── Drag & Drop state ──────────────────────────────────────────────────────
+  const [dragEventId, setDragEventId] = useState<number | null>(null);
+  const [dragOverDate, setDragOverDate] = useState<string | null>(null);
+
   const EVENT_TYPE_LABELS: Record<string, string> = {
     maturity: t('enums.statuses.matured'),
     debt_due: t('loans.table.dueDate'),
@@ -146,6 +150,70 @@ export default function Calendar() {
     }
   };
 
+  // ── Drag & Drop handlers ───────────────────────────────────────────────────
+  const handleDragStart = (e: React.DragEvent, eventId: number) => {
+    setDragEventId(eventId);
+    e.dataTransfer.effectAllowed = 'move';
+    // Needed for Firefox
+    e.dataTransfer.setData('text/plain', String(eventId));
+  };
+
+  const handleDragEnd = () => {
+    setDragEventId(null);
+    setDragOverDate(null);
+  };
+
+  const handleDragOver = (e: React.DragEvent, dateKey: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverDate(dateKey);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    // Only clear when leaving the cell entirely (not entering a child element)
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setDragOverDate(null);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent, targetDate: string) => {
+    e.preventDefault();
+    setDragOverDate(null);
+
+    if (!dragEventId) return;
+
+    const ev = events.find(ev => ev.id === dragEventId);
+    if (!ev || ev.due_date === targetDate) {
+      setDragEventId(null);
+      return;
+    }
+
+    const originalDate = ev.due_date;
+
+    // Optimistic update — move event in local state immediately
+    setEvents(prev =>
+      prev.map(e => e.id === dragEventId ? { ...e, due_date: targetDate } : e)
+    );
+    // Update selected date panel to follow the moved event
+    setSelectedDate(targetDate);
+    setDragEventId(null);
+
+    try {
+      await apiFetch(`/api/v1/calendar/${dragEventId}`, {
+        method: 'PUT',
+        body: { due_date: targetDate },
+      });
+      success('Đã di chuyển', { message: `Sự kiện đã chuyển sang ${formatDateLabelLocal(targetDate)}` });
+    } catch (e: unknown) {
+      // Rollback on failure
+      setEvents(prev =>
+        prev.map(ev => ev.id === dragEventId ? { ...ev, due_date: originalDate } : ev)
+      );
+      setSelectedDate(originalDate);
+      toastError('Không thể di chuyển', { message: e instanceof Error ? e.message : 'Unknown error', status: e instanceof ApiError ? e.status : undefined, code: e instanceof ApiError ? e.code : undefined });
+    }
+  };
+
   const prevMonth = () => {
     if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); }
     else setViewMonth(m => m - 1);
@@ -183,7 +251,12 @@ export default function Calendar() {
             <h1 className="text-2xl font-bold text-white">
               {MONTHS[viewMonth]} {viewYear}
             </h1>
-            <p className="text-sm text-gray-400">{t('calendar.subtitle')}</p>
+            <p className="text-sm text-gray-400">
+              {t('calendar.subtitle')}
+              {dragEventId && (
+                <span className="ml-2 text-green-400 animate-pulse">↔ Kéo thả để đổi ngày</span>
+              )}
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-2 mr-auto sm:mr-0">
@@ -237,9 +310,13 @@ export default function Calendar() {
                 <div
                   key={key}
                   onClick={() => date && setSelectedDate(key)}
+                  onDragOver={date ? (e) => handleDragOver(e, key) : undefined}
+                  onDragLeave={date ? handleDragLeave : undefined}
+                  onDrop={date ? (e) => void handleDrop(e, key) : undefined}
                   className={`border-b border-r border-[#222] min-h-[96px] p-1.5 relative transition-colors
                     ${date ? 'cursor-pointer hover:bg-[#161616]' : 'bg-[#0a0a0a]'}
-                    ${isSelected ? 'bg-[#1a2a1a]' : ''}
+                    ${isSelected && dragOverDate !== key ? 'bg-[#1a2a1a]' : ''}
+                    ${dragOverDate === key ? 'bg-green-900/20 ring-1 ring-inset ring-green-600' : ''}
                   `}
                 >
                   {date && (
@@ -251,17 +328,21 @@ export default function Calendar() {
                         {date.getDate()}
                       </div>
 
-                      {/* Event chips (max 3, then +N) */}
+                      {/* Event chips (max 2, then +N) */}
                       <div className="space-y-0.5">
                         {dayEvents.slice(0, 2).map(ev => (
                           <div
                             key={ev.id}
+                            draggable={ev.is_dismissed === 0}
+                            onDragStart={ev.is_dismissed === 0 ? (e) => { e.stopPropagation(); handleDragStart(e, ev.id); } : undefined}
+                            onDragEnd={handleDragEnd}
                             onClick={e => { e.stopPropagation(); setSelectedDate(key); setSelectedEvent(ev); }}
                             className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border truncate
                               ${EVENT_BADGE_COLOR[ev.event_type] ?? EVENT_BADGE_COLOR.other}
-                              ${ev.is_dismissed ? 'opacity-40' : ''}
+                              ${ev.is_dismissed ? 'opacity-40' : 'cursor-grab active:cursor-grabbing'}
+                              ${dragEventId === ev.id ? 'opacity-40 scale-95' : ''}
                             `}
-                            title={ev.title}
+                            title={ev.is_dismissed === 0 ? `${ev.title} — kéo để đổi ngày` : ev.title}
                           >
                             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${EVENT_DOT_COLOR[ev.event_type] ?? 'bg-gray-400'}`} />
                             <span className="truncate">{ev.title}</span>

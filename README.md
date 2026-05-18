@@ -249,38 +249,32 @@ Key protected resources:
 
 ```
 courtify/
-├── backend/
+├── backend/                     # Node.js + Express + better-sqlite3
 │   ├── src/
-│   │   ├── db/
-│   │   │   ├── client.ts           # SQLite singleton (WAL + FK + busy_timeout)
-│   │   │   ├── knexfile.ts         # Knex migration config
-│   │   │   ├── migrations/         # Schema migrations (001–013)
-│   │   │   └── seed.ts             # Demo data seeder
-│   │   ├── errors.ts               # BusinessRuleError, NotFoundError, AuthError
-│   │   ├── middleware/             # requireAuth, asyncHandler, validateBody, errorHandler
-│   │   ├── routes/                 # Express routers (one per resource)
-│   │   ├── services/               # Business logic layer
-│   │   │   ├── analyticsService.ts
-│   │   │   ├── calendarEventHelpers.ts  # Auto-event creation (no circular imports)
-│   │   │   ├── calendarService.ts
-│   │   │   ├── institutionService.ts
-│   │   │   ├── ledgerService.ts
-│   │   │   ├── loanService.ts
-│   │   │   ├── lotService.ts
-│   │   │   ├── metalsService.ts
-│   │   │   ├── portfolioService.ts # net_worth_snapshots upsert
-│   │   │   └── savingsService.ts
-│   │   ├── lib/
-│   │   │   ├── fifo.ts             # Pure FIFO lot-matching (no DB side effects)
-│   │   │   └── response.ts         # ok() / created() envelope helpers
-│   │   └── index.ts                # App entry point + route mounting
+│   │   ├── infrastructure/
+│   │   │   ├── db/
+│   │   │   │   ├── client.ts    # better-sqlite3 singleton
+│   │   │   │   ├── knexfile.ts  # Knex migration config
+│   │   │   │   ├── seed.ts      # Demo data seeder
+│   │   │   │   └── migrations/  # Migration files (001…NNN)
+│   │   │   └── middleware/      # Auth, error handler, validation
+│   │   ├── modules/             # Feature modules (auth, dashboard, metals…)
+│   │   │   └── <module>/
+│   │   │       ├── <module>.repository.ts  # DB queries
+│   │   │       ├── <module>.service.ts     # Business logic
+│   │   │       ├── <module>.routes.ts      # Express routes
+│   │   │       ├── <module>.types.ts       # Types & Zod schemas
+│   │   │       └── index.ts                # Module factory
+│   │   ├── shared/              # Shared errors, response helpers, types
+│   │   ├── app.ts               # Express app factory
+│   │   └── server.ts            # Entry point (migrations + seed + listen)
 │   ├── tests/
 │   │   ├── setup.ts                # Global test setup: migrations + seed user
 │   │   ├── unit/                   # Vitest unit tests (in-memory SQLite)
 │   │   └── contract/               # Supertest API contract tests
 │   └── vitest.config.ts
 │
-├── frontend/
+├── frontend/                    # React 18 + Vite + TypeScript
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── charts/             # NetWorthLine, AssetGroupedBar, SparklineBar, AllocationDonut

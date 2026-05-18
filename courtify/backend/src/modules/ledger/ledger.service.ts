@@ -28,7 +28,8 @@ export class LedgerService {
 
   listEntries(params: ListParams) {
     const {
-      assetClass, entryType, dateFrom, dateTo, status,
+      assetClass, entryType, dateFrom, dateTo, status, search,
+      includeVoided = false,
       sort = 'transaction_date', sortDir = 'desc', page = 1,
     } = params;
 
@@ -37,6 +38,12 @@ export class LedgerService {
 
     const conditions: string[] = ['le.deleted_at IS NULL'];
     const bindings: (string | number)[] = [];
+
+    // Exclude voided entries by default — they are accounting corrections,
+    // not normal transactions. User must explicitly opt-in to see them.
+    if (!includeVoided) {
+      conditions.push('le.voided_at IS NULL');
+    }
 
     if (assetClass) {
       conditions.push('ac.code = ?');
@@ -54,9 +61,16 @@ export class LedgerService {
       conditions.push('le.transaction_date <= ?');
       bindings.push(dateTo + 'T23:59:59.999Z');
     }
+    // When filtering by status, include voided regardless of includeVoided flag
+    // so user can explicitly filter status=voided to see them
     if (status) {
       conditions.push('le.status = ?');
       bindings.push(status);
+    }
+    if (search && search.trim()) {
+      conditions.push('(le.description LIKE ? OR le.notes LIKE ?)');
+      const term = `%${search.trim()}%`;
+      bindings.push(term, term);
     }
 
     const total_count = this.repo.countEntries(conditions, bindings);
@@ -82,9 +96,13 @@ export class LedgerService {
 
   updateEntry(id: number, data: Partial<{
     asset_class_id: number; institution_id: number; entry_type: string;
-    description: string; amount: string; status: string; transaction_date: string; notes: string;
-  }>) {
+    description: string; amount: string; status: string; transaction_date: string;
+    notes: string; edit_reason: string;
+  }> & { edit_reason?: string }) {
     this.getEntryById(id);
+
+    // Snapshot before every edit so the audit trail is complete
+    this.repo.snapshotVersion(id, data.edit_reason ?? null);
 
     const sets: string[] = ["updated_at = datetime('now')"];
     const vals: (string | number | null)[] = [];
@@ -103,10 +121,80 @@ export class LedgerService {
     return this.getEntryById(id);
   }
 
+  /**
+   * Reverse an entry: creates a mirror row with negated amount (the reversal),
+   * marks the original as status='reversed', and returns the reversal entry.
+   *
+   * This follows the double-entry bookkeeping pattern used by QuickBooks/Xero:
+   *   original  -300,000,000  [reversed]
+   *   reversal  +300,000,000  [completed]  ← returned here
+   * After this, the caller should create a new corrected entry.
+   */
+  reverseEntry(id: number, reason: string) {
+    const original = this.getEntryById(id);
+    const status = (original as Record<string, unknown>).status as string;
+    if (status === 'voided') throw new Error('Voided entries cannot be reversed. They are already cancelled.');
+    if (status === 'reversed') throw new Error('Entry has already been reversed.');
+    if ((original as Record<string, unknown>).is_auto === 1) {
+      throw new Error('Auto-generated entries cannot be reversed directly. Correct the source record instead.');
+    }
+    const reversalId = this.repo.insertReversalEntry(original as Record<string, unknown>, reason);
+    this.repo.markAsReversed(id);
+    this.dashboard.upsertSnapshot();
+    return this.getEntryById(reversalId);
+  }
+
+  getEntryVersions(id: number) {
+    this.getEntryById(id);
+    return this.repo.getVersions(id);
+  }
+
+  /**
+   * Void an entry with a mandatory reason.
+   * This is the correct accounting practice — never delete, always void.
+   * Voided entries are excluded from balance calculations but preserved
+   * for audit trail and reconciliation purposes.
+   */
+  voidEntry(id: number, reason: string) {
+    const entry = this.getEntryById(id);
+    // Auto-generated entries cannot be voided directly —
+    // they must be corrected at the source module
+    if ((entry as Record<string, unknown>).is_auto === 1) {
+      throw new Error('Auto-generated entries cannot be voided. Please correct the source record.');
+    }
+    if ((entry as Record<string, unknown>).voided_at) {
+      throw new Error('Entry is already voided.');
+    }
+    this.repo.voidEntry(id, reason);
+    this.dashboard.upsertSnapshot();
+    return this.getEntryById(id);
+  }
+
   softDeleteEntry(id: number) {
     this.getEntryById(id);
     this.repo.softDeleteEntry(id);
     this.dashboard.upsertSnapshot();
     return this.repo.findDeletedAt(id);
+  }
+
+  /**
+   * Lightweight status-only update — avoids full PUT payload for a single field change.
+   * Used by inline status click in the UI.
+   */
+  updateStatus(id: number, status: string) {
+    this.getEntryById(id);
+    this.repo.updateEntry(id, ["status = ?", "updated_at = datetime('now')"], [status]);
+    this.dashboard.upsertSnapshot();
+    return this.getEntryById(id);
+  }
+
+  /**
+   * Bulk status update — update up to 500 entries in a single transaction.
+   * Only updates manual entries (is_auto = 0) to protect auto-generated records.
+   */
+  bulkUpdateStatus(ids: number[], status: string) {
+    const updated = this.repo.bulkUpdateStatus(ids, status);
+    this.dashboard.upsertSnapshot();
+    return { updated_count: updated, status };
   }
 }

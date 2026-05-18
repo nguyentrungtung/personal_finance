@@ -151,6 +151,50 @@ const TAB_FORM_CONFIG: Record<string, TabFormConfig> = {
 
 
 
+interface SellFormConfig {
+  volumeLabel: string;
+  volumePlaceholder: string;
+  priceLabel: string;
+  pricePlaceholder: string;
+  actionLabel: string;
+  hint: string;
+}
+
+const SELL_CONFIG: Record<string, SellFormConfig> = {
+  markets: {
+    volumeLabel: 'Số lượng bán',
+    volumePlaceholder: '0',
+    priceLabel: 'Giá bán / đơn vị (VND)',
+    pricePlaceholder: '0',
+    actionLabel: 'Xác nhận bán',
+    hint: 'Hệ thống sẽ tự động khớp lô theo phương pháp FIFO (lô mua trước bán trước).',
+  },
+  metals: {
+    volumeLabel: 'Khối lượng bán',
+    volumePlaceholder: '0',
+    priceLabel: 'Giá bán / gram (VND)',
+    pricePlaceholder: '0',
+    actionLabel: 'Xác nhận bán',
+    hint: 'Nhập khối lượng và giá bán theo cùng đơn vị đã mua.',
+  },
+  liquidity: {
+    volumeLabel: 'Số CCQ / đơn vị rút',
+    volumePlaceholder: '0',
+    priceLabel: 'NAV / đơn vị (VND)',
+    pricePlaceholder: '0',
+    actionLabel: 'Xác nhận rút',
+    hint: 'Ghi nhận việc rút vốn hoặc đáo hạn quỹ. Lãi/lỗ sẽ được tính tự động.',
+  },
+  real_estate: {
+    volumeLabel: 'Diện tích / Số lô bán',
+    volumePlaceholder: '0',
+    priceLabel: 'Giá bán (VND)',
+    pricePlaceholder: '0',
+    actionLabel: 'Xác nhận chuyển nhượng',
+    hint: 'Ghi nhận giao dịch chuyển nhượng bất động sản. Nhập tổng giá trị giao dịch.',
+  },
+};
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function InvestmentLedger() {
@@ -174,6 +218,7 @@ export default function InvestmentLedger() {
 
   const SellSchema = z.object({
     asset_name: z.string().min(1, t('investmentLedger.errors.required')),
+    asset_class_id: z.coerce.number().int().positive().optional(),
     sell_volume: z.coerce.number().positive(t('investmentLedger.errors.mustBePositive')),
     sell_price: z.coerce.number().positive(t('investmentLedger.errors.mustBePositive')),
     fee: z.union([z.coerce.number().min(0), z.literal(''), z.nan()]).optional().transform(v => typeof v === 'number' && v >= 0 ? v : undefined),
@@ -198,6 +243,11 @@ export default function InvestmentLedger() {
   const [priceInput, setPriceInput] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  // ── Sell modal state ──────────────────────────────────────────────────────
+  const [selectedSellAsset, setSelectedSellAsset] = useState<string>('');
+  const [sellPricePreview, setSellPricePreview] = useState<number>(0);
+  const [sellVolumePreview, setSellVolumePreview] = useState<number>(0);
+
   const { register, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm<BuyForm>({
     resolver: zodResolver(BuySchema),
     defaultValues: { asset_subtype: 'stock' },
@@ -207,6 +257,27 @@ export default function InvestmentLedger() {
 
   const currentTab = TABS.find(t => t.key === activeTab)!;
   const tabCfg = TAB_FORM_CONFIG[activeTab] ?? TAB_FORM_CONFIG.markets;;
+
+  const sellCfg = SELL_CONFIG[activeTab] ?? SELL_CONFIG.markets;
+
+  // Unique asset names available for selling in current tab
+  const sellableAssets = Array.from(
+    new Map(
+      lots
+        .filter(l => parseFloat(l.remaining_volume) > 0)
+        .map(l => [l.asset_name, l])
+    ).values()
+  );
+
+  // Selected asset info for P&L preview
+  const selectedLots = lots.filter(l => l.asset_name === selectedSellAsset && parseFloat(l.remaining_volume) > 0);
+  const totalRemaining = selectedLots.reduce((s, l) => s + parseFloat(l.remaining_volume), 0);
+  const avgCost = selectedLots.length > 0
+    ? selectedLots.reduce((s, l) => s + parseFloat(l.buy_price_per_unit) * parseFloat(l.remaining_volume), 0) / totalRemaining
+    : 0;
+  const previewPnl = sellVolumePreview > 0 && sellPricePreview > 0
+    ? (sellPricePreview - avgCost) * sellVolumePreview
+    : null;
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -272,10 +343,16 @@ export default function InvestmentLedger() {
   const onSellSubmit = sellForm.handleSubmit(async (data) => {
     try {
       setError(null);
-      await apiFetch('/api/v1/lots/sell', { method: 'POST', body: data });
+      await apiFetch('/api/v1/lots/sell', {
+        method: 'POST',
+        body: { ...data, asset_class_id: ASSET_CLASS_ID_MAP[activeTab] ?? data.asset_class_id },
+      });
       success(t('investmentLedger.recordSell'), { message: 'Sell recorded.' });
       setShowSellModal(false);
       sellForm.reset();
+      setSelectedSellAsset('');
+      setSellPricePreview(0);
+      setSellVolumePreview(0);
       fetchData();
     } catch (e: unknown) {
       setError((e as Error).message ?? t('investmentLedger.errors.sellFailed'));
@@ -320,7 +397,13 @@ export default function InvestmentLedger() {
           </div>
           <div className="flex gap-2 w-full sm:w-auto">
             <button
-              onClick={() => { setShowSellModal(true); sellForm.reset(); }}
+              onClick={() => {
+                setShowSellModal(true);
+                sellForm.reset();
+                setSelectedSellAsset('');
+                setSellPricePreview(0);
+                setSellVolumePreview(0);
+              }}
               className="flex-1 sm:flex-none px-4 py-2 text-sm border border-amber-600 text-amber-400 hover:bg-amber-900/30 rounded-lg font-medium"
             >
               {t('investmentLedger.recordSell')}
@@ -708,62 +791,170 @@ export default function InvestmentLedger() {
         </div>
       )}
 
-      {/* Sell Modal */}
+      {/* Sell Modal — per-channel config */}
       {showSellModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#111] border border-[#2a2a2a] rounded-2xl w-full max-w-sm p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-white">{t('investmentLedger.modals.recordSell')}</h2>
-              <button onClick={() => setShowSellModal(false)} className="text-gray-400 hover:text-white text-xl">×</button>
+          <div className="bg-[#111] border border-[#2a2a2a] rounded-2xl w-full max-w-md p-6">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">{TAB_FORM_CONFIG[activeTab]?.icon ?? '💰'}</span>
+                <h2 className="text-lg font-bold text-white">{t('investmentLedger.modals.recordSell')}</h2>
+              </div>
+              <button
+                onClick={() => { setShowSellModal(false); setError(null); setSelectedSellAsset(''); setSellPricePreview(0); setSellVolumePreview(0); }}
+                className="text-gray-400 hover:text-white text-xl"
+              >×</button>
             </div>
+            <p className="text-xs text-gray-500 mb-4 border-l-2 border-amber-600/40 pl-2">{sellCfg.hint}</p>
+
             <form onSubmit={onSellSubmit} className="space-y-3">
+              {/* Asset selector — dropdown from current lots */}
               <div>
-                <label className="text-xs text-gray-400 uppercase tracking-widest mb-1 block">{t('investmentLedger.modals.assetName')}</label>
-                <input {...sellForm.register('asset_name')} placeholder={t('investmentLedger.modals.assetNamePlaceholder')}
-                  className="w-full bg-[#1a1a1a] border border-[#333] rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-green-600" />
+                <label className="text-xs text-gray-400 uppercase tracking-widest mb-1 block">
+                  {t('investmentLedger.modals.assetName')}
+                </label>
+                {sellableAssets.length > 0 ? (
+                  <select
+                    className="w-full bg-[#1a1a1a] border border-[#333] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-600"
+                    value={selectedSellAsset}
+                    onChange={e => {
+                      setSelectedSellAsset(e.target.value);
+                      sellForm.setValue('asset_name', e.target.value);
+                    }}
+                  >
+                    <option value="">{t('ledger.select')}</option>
+                    {sellableAssets.map(l => (
+                      <option key={l.asset_name} value={l.asset_name}>
+                        {l.asset_name} — còn {parseFloat(l.remaining_volume).toFixed(4)} {l.unit_label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    {...sellForm.register('asset_name')}
+                    placeholder={t('investmentLedger.modals.assetNamePlaceholder')}
+                    className="w-full bg-[#1a1a1a] border border-[#333] rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-600"
+                  />
+                )}
                 {sellForm.formState.errors.asset_name && (
                   <p className="text-red-400 text-xs mt-1">{sellForm.formState.errors.asset_name.message}</p>
                 )}
               </div>
+
+              {/* Selected asset info card */}
+              {selectedSellAsset && selectedLots.length > 0 && (
+                <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3 py-2.5 text-xs space-y-1">
+                  <div className="flex justify-between text-gray-400">
+                    <span>Còn lại:</span>
+                    <span className="text-white font-mono">{totalRemaining.toFixed(4)} {selectedLots[0]?.unit_label}</span>
+                  </div>
+                  <div className="flex justify-between text-gray-400">
+                    <span>Giá vốn bình quân:</span>
+                    <span className="text-white font-mono">{avgCost.toLocaleString('vi-VN')} ₫</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Volume + Price */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-gray-400 uppercase tracking-widest mb-1 block">{t('investmentLedger.modals.sellVolume')}</label>
-                  <input {...sellForm.register('sell_volume', { valueAsNumber: true })} type="number" step="0.0001" placeholder="0"
-                    className="w-full bg-[#1a1a1a] border border-[#333] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-600" />
+                  <label className="text-xs text-gray-400 uppercase tracking-widest mb-1 block">
+                    {sellCfg.volumeLabel}
+                  </label>
+                  <input
+                    {...sellForm.register('sell_volume', { valueAsNumber: true })}
+                    type="number"
+                    step="0.0001"
+                    placeholder={sellCfg.volumePlaceholder}
+                    onChange={e => {
+                      sellForm.setValue('sell_volume', parseFloat(e.target.value) || 0);
+                      setSellVolumePreview(parseFloat(e.target.value) || 0);
+                    }}
+                    className="w-full bg-[#1a1a1a] border border-[#333] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-600"
+                  />
+                  {sellForm.formState.errors.sell_volume && (
+                    <p className="text-red-400 text-xs mt-1">{sellForm.formState.errors.sell_volume.message}</p>
+                  )}
                 </div>
                 <div>
-                  <label className="text-xs text-gray-400 uppercase tracking-widest mb-1 block">{t('investmentLedger.modals.sellPrice')}</label>
+                  <label className="text-xs text-gray-400 uppercase tracking-widest mb-1 block">
+                    {sellCfg.priceLabel}
+                  </label>
                   <VNDInput
-                    onChange={(v: string) => sellForm.setValue('sell_price', Number(v))}
+                    onChange={(v: string) => {
+                      sellForm.setValue('sell_price', Number(v));
+                      setSellPricePreview(Number(v) || 0);
+                    }}
                     value={String(sellForm.watch('sell_price') || '')}
-                    placeholder="0"
-                    className="w-full bg-[#1a1a1a] border border-[#333] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-600"
+                    placeholder={sellCfg.pricePlaceholder}
+                    className="w-full bg-[#1a1a1a] border border-[#333] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-600"
                   />
+                  {sellForm.formState.errors.sell_price && (
+                    <p className="text-red-400 text-xs mt-1">{sellForm.formState.errors.sell_price.message}</p>
+                  )}
                 </div>
               </div>
+
+              {/* Fee + Date */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-gray-400 uppercase tracking-widest mb-1 block">{t('investmentLedger.modals.fee')}</label>
+                  <label className="text-xs text-gray-400 uppercase tracking-widest mb-1 block">
+                    {t('investmentLedger.modals.fee')}
+                  </label>
                   <VNDInput
                     onChange={(v: string) => sellForm.setValue('fee', Number(v))}
                     value={String(sellForm.watch('fee') || '')}
                     placeholder="0"
-                    className="w-full bg-[#1a1a1a] border border-[#333] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-600"
+                    className="w-full bg-[#1a1a1a] border border-[#333] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-600"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-400 uppercase tracking-widest mb-1 block">{t('investmentLedger.modals.purchaseDate')}</label>
-                  <input type="date" {...sellForm.register('date')}
-                    className="w-full bg-[#1a1a1a] border border-[#333] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-600" />
+                  <label className="text-xs text-gray-400 uppercase tracking-widest mb-1 block">
+                    {t('investmentLedger.modals.sellDate')}
+                  </label>
+                  <input
+                    type="date"
+                    {...sellForm.register('date')}
+                    className="w-full bg-[#1a1a1a] border border-[#333] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-600"
+                  />
+                  {sellForm.formState.errors.date && (
+                    <p className="text-red-400 text-xs mt-1">{sellForm.formState.errors.date.message}</p>
+                  )}
                 </div>
               </div>
+
+              {/* P&L Preview */}
+              {previewPnl !== null && (
+                <div className={`rounded-lg px-3 py-2.5 text-xs border ${previewPnl >= 0 ? 'bg-green-900/20 border-green-800 text-green-300' : 'bg-red-900/20 border-red-800 text-red-300'}`}>
+                  <div className="flex justify-between">
+                    <span>Lãi / Lỗ dự kiến:</span>
+                    <span className="font-mono font-semibold">
+                      {previewPnl >= 0 ? '+' : ''}{Math.round(previewPnl).toLocaleString('vi-VN')} ₫
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-gray-400 mt-0.5">
+                    <span>Tổng thu về (trước phí):</span>
+                    <span className="font-mono">{Math.round(sellPricePreview * sellVolumePreview).toLocaleString('vi-VN')} ₫</span>
+                  </div>
+                </div>
+              )}
+
               {error && <p className="text-red-400 text-xs">{error}</p>}
+
               <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => { setShowSellModal(false); setError(null); }}
-                  className="px-4 py-2 text-sm text-gray-400 hover:text-white">{t('common.cancel')}</button>
-                <button type="submit"
-                  className="bg-amber-500 hover:bg-amber-400 text-black font-semibold px-5 py-2 rounded-lg text-sm">
-                  {t('investmentLedger.modals.confirmSell')}
+                <button
+                  type="button"
+                  onClick={() => { setShowSellModal(false); setError(null); setSelectedSellAsset(''); setSellPricePreview(0); setSellVolumePreview(0); }}
+                  className="px-4 py-2 text-sm text-gray-400 hover:text-white"
+                >
+                  {t('common.cancel')}
+                </button>
+                <button
+                  type="submit"
+                  className="bg-amber-500 hover:bg-amber-400 text-black font-semibold px-5 py-2 rounded-lg text-sm"
+                >
+                  {sellCfg.actionLabel}
                 </button>
               </div>
             </form>
