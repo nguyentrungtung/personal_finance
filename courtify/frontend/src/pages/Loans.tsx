@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { numericInputProps } from '../utils/numericInput';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -490,6 +491,7 @@ export default function Loans() {
                   <label className="text-xs text-gray-400 uppercase tracking-widest mb-1 block">{t('loans.modals.interestRate')}</label>
                   <div className="relative">
                     <input
+                      {...numericInputProps}
                       {...register('interest_rate')}
                       placeholder="0"
                       className="w-full bg-[#1a1a1a] border border-[#333] rounded-lg px-3 py-2 pr-12 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-green-600"

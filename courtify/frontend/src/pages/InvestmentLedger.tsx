@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { numericInputProps } from '../utils/numericInput';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -737,7 +738,7 @@ export default function InvestmentLedger() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-gray-400 uppercase tracking-widest mb-1 block">{tabCfg.volumeLabel}</label>
-                  <input {...register('volume')} type="number" step="0.0001" placeholder={tabCfg.volumePlaceholder}
+                  <input {...numericInputProps} {...register('volume')} placeholder={tabCfg.volumePlaceholder}
                     className="w-full bg-[#1a1a1a] border border-[#333] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-600" />
                   {errors.volume && <p className="text-red-400 text-xs mt-1">{errors.volume.message}</p>}
                 </div>
@@ -863,13 +864,13 @@ export default function InvestmentLedger() {
                     {sellCfg.volumeLabel}
                   </label>
                   <input
+                    {...numericInputProps}
                     {...sellForm.register('sell_volume', { valueAsNumber: true })}
-                    type="number"
-                    step="0.0001"
                     placeholder={sellCfg.volumePlaceholder}
                     onChange={e => {
-                      sellForm.setValue('sell_volume', parseFloat(e.target.value) || 0);
-                      setSellVolumePreview(parseFloat(e.target.value) || 0);
+                      const v = parseFloat(e.target.value) || 0;
+                      sellForm.setValue('sell_volume', v);
+                      setSellVolumePreview(v);
                     }}
                     className="w-full bg-[#1a1a1a] border border-[#333] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-600"
                   />

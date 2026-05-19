@@ -157,6 +157,13 @@ const VNDInput = forwardRef<HTMLInputElement, VNDInputProps>(
         defaultValue={formatForDisplay(value)}
         onKeyDown={handleKeyDown}
         onChange={handleChange}
+        onPaste={(e) => {
+          const text = e.clipboardData.getData('text');
+          // Only allow paste if content looks like a number (digits, dots, commas, optional leading minus)
+          if (!/^-?[\d.,]+$/.test(text.trim())) {
+            e.preventDefault();
+          }
+        }}
         placeholder={placeholder}
         className={`input ${className}`}
         {...rest}
