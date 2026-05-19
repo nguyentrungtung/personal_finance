@@ -4,6 +4,30 @@ shell commands, and other important information, read the current plan
 at specs/001-courtify-wealth-dashboard/plan.md
 <!-- SPECKIT END -->
 
+## Tài liệu bắt buộc đọc theo ngữ cảnh
+
+**Đọc `docs/project-context.md` TRƯỚC KHI làm bất kỳ task nào.** File này chứa bối cảnh dự án, quyết định thiết kế đã xác nhận, lưu ý kỹ thuật, và quy trình phát triển.
+
+Sau đó tra theo bảng:
+
+| Khi task liên quan đến... | Đọc thêm |
+|---------------------------|----------|
+| Module `ledger` (void, reversal, edit, filter status) | `docs/ledger-accounting-model.md` |
+| Bất kỳ màn hình UI nào | `design/<screen>/screen.png` (bảng bên dưới) |
+| API fields / response contract | `specs/001-courtify-wealth-dashboard/contracts/` |
+| Schema DB hoặc migration mới | `specs/001-courtify-wealth-dashboard/data-model.md` |
+| Kế hoạch tổng thể / tasks còn lại | `specs/001-courtify-wealth-dashboard/plan.md` |
+
+### Quy trình phát triển (bắt buộc tuân theo)
+
+```
+Phân tích yêu cầu → [Hỏi nếu chưa rõ] → Viết code → Rebuild Docker (nếu backend) → Test curl/browser → Pass? → Cập nhật tài liệu
+                                                                                                              ↓ Fail
+                                                                                              Đọc logs → Phân tích root cause → Viết code lại
+```
+
+Chi tiết từng bước xem trong `docs/project-context.md` mục 6.
+
 ## Design References
 
 Before implementing any frontend component or backend API handler, read the corresponding design screenshot in `design/` to understand the UI layout and the exact data fields the screen needs.

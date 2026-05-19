@@ -84,7 +84,12 @@ export function createLedgerRouter(service: LedgerService): Router {
       sortDir: params.sort_dir,
       page: params.page,
     });
-    return ok(res, result.rows, { count: result.total_count, current_page: result.current_page });
+    return ok(res, result.rows, {
+      count: result.total_count,
+      current_page: result.current_page,
+      total_pages: result.total_pages,
+      per_page: result.per_page,
+    });
   }));
 
   router.post('/', requireAuth, validateBody(CreateSchema), asyncHandler(async (req, res) => {
@@ -100,6 +105,11 @@ export function createLedgerRouter(service: LedgerService): Router {
       notes: body.notes,
     });
     return created(res, entry);
+  }));
+
+  router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    return ok(res, service.getEntryById(id));
   }));
 
   router.put('/:id', requireAuth, validateBody(UpdateSchema), asyncHandler(async (req, res) => {

@@ -3,6 +3,7 @@ import type { InvestmentRepository } from './investment.repository.js';
 import type { LedgerService } from '../ledger/ledger.service.js';
 import type { DashboardService } from '../dashboard/dashboard.service.js';
 import type { ListLotsParams, BuyLotDto, SellDto, FifoLot, FifoMatch } from './investment.types.js';
+import { paginate } from '../../shared/pagination.js';
 
 function fifoMatch(lots: FifoLot[], sellVolume: number): FifoMatch[] {
   const sorted = [...lots].sort((a, b) => a.purchaseDate.localeCompare(b.purchaseDate));
@@ -40,7 +41,11 @@ export class InvestmentService {
   ) {}
 
   listLots(params: ListLotsParams = {}) {
-    return this.repo.findAll(params);
+    const rows = this.repo.findAll(params);
+    // aggregated view: no pagination — always a small grouped result set
+    if (params.view === 'aggregated') return rows;
+    const total_count = this.repo.countFiltered(params);
+    return paginate(rows as Record<string, unknown>[], total_count, params.page ?? 1);
   }
 
   getLotById(id: number) {

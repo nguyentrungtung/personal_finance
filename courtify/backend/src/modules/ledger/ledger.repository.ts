@@ -1,7 +1,6 @@
 import type Database from 'better-sqlite3';
 import type { AutoLedgerParams, SourceModule } from './ledger.types.js';
-
-const PAGE_SIZE = 50;
+import { PAGE_SIZE } from '../../shared/pagination.js';
 
 export class LedgerRepository {
   constructor(private readonly db: Database.Database) {}

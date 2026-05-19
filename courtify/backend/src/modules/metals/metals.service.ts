@@ -2,7 +2,8 @@ import { BusinessRuleError } from '../../shared/errors.js';
 import type { MetalsRepository } from './metals.repository.js';
 import type { LedgerService } from '../ledger/ledger.service.js';
 import type { DashboardService } from '../dashboard/dashboard.service.js';
-import type { CreateMetalDto, UpdateMetalDto, MetalHolding, MetalHoldingRow } from './metals.types.js';
+import type { CreateMetalDto, UpdateMetalDto, MetalHolding, MetalHoldingRow, ListMetalsParams } from './metals.types.js';
+import { paginate } from '../../shared/pagination.js';
 
 const METALS_ASSET_CLASS_ID = 1; // asset_classes seed: metals=1
 
@@ -34,8 +35,10 @@ export class MetalsService {
     private readonly dashboard: DashboardService,
   ) {}
 
-  listAll(): MetalHolding[] {
-    return this.repo.findAll().map(toHolding);
+  listAll(params: ListMetalsParams = {}) {
+    const rows = this.repo.findAll(params).map(toHolding);
+    const total_count = this.repo.countFiltered(params);
+    return paginate(rows, total_count, params.page ?? 1);
   }
 
   getById(id: number): MetalHolding {

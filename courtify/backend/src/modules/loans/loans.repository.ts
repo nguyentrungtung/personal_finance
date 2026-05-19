@@ -1,14 +1,52 @@
 import type Database from 'better-sqlite3';
 import { NotFoundError } from '../../shared/errors.js';
+import { PAGE_SIZE } from '../../shared/pagination.js';
 import type { ListLoansParams } from './loans.types.js';
 
 const ALLOWED_SORT = ['counterparty_name', 'principal', 'expected_due_date', 'status', 'date_issued'];
 
+const LOAN_INNER_QUERY = `
+  SELECT l.*,
+    CAST(l.principal AS REAL) - COALESCE(
+      (SELECT SUM(CAST(lp.paid_amount AS REAL)) FROM loan_payments lp
+       WHERE lp.loan_id = l.id AND lp.status = 'paid'), 0
+    ) AS remaining_balance,
+    CASE
+      WHEN CAST(l.principal AS REAL) - COALESCE(
+        (SELECT SUM(CAST(lp.paid_amount AS REAL)) FROM loan_payments lp
+         WHERE lp.loan_id = l.id AND lp.status = 'paid'), 0
+      ) <= 0 THEN 'settled'
+      WHEN l.expected_due_date < date('now') THEN 'overdue'
+      ELSE 'active'
+    END AS computed_status
+  FROM loans l
+`;
+
 export class LoansRepository {
   constructor(private readonly db: Database.Database) {}
 
+  countFiltered(params: ListLoansParams = {}): number {
+    const { type, status, search } = params;
+    const conditions: string[] = [];
+    const bindings: (string | number)[] = [];
+
+    if (type) { conditions.push("l.loan_type = ?"); bindings.push(type); }
+    if (search?.trim()) {
+      conditions.push('l.counterparty_name LIKE ?');
+      bindings.push(`%${search.trim()}%`);
+    }
+
+    const innerWhere = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const statusFilter = status ? 'WHERE computed_status = ?' : '';
+    const statusBindings = status ? [status] : [];
+
+    return (this.db.prepare(`
+      SELECT COUNT(*) AS cnt FROM (${LOAN_INNER_QUERY} ${innerWhere}) AS sub ${statusFilter}
+    `).get(...bindings, ...statusBindings) as { cnt: number }).cnt;
+  }
+
   findAll(params: ListLoansParams = {}) {
-    const { type, status, sort = 'date_issued', sortDir = 'desc' } = params;
+    const { type, status, search, sort = 'date_issued', sortDir = 'desc', page = 1 } = params;
     const safeSort = ALLOWED_SORT.includes(sort) ? sort : 'date_issued';
     const safeDir = sortDir.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 
@@ -16,30 +54,22 @@ export class LoansRepository {
     const bindings: (string | number)[] = [];
 
     if (type) { conditions.push('l.loan_type = ?'); bindings.push(type); }
-    if (status) { conditions.push('computed_status = ?'); bindings.push(status); }
+    if (search?.trim()) {
+      conditions.push('l.counterparty_name LIKE ?');
+      bindings.push(`%${search.trim()}%`);
+    }
 
-    const innerQuery = `
-      SELECT l.*,
-        CAST(l.principal AS REAL) - COALESCE(
-          (SELECT SUM(CAST(lp.paid_amount AS REAL)) FROM loan_payments lp
-           WHERE lp.loan_id = l.id AND lp.status = 'paid'), 0
-        ) AS remaining_balance,
-        CASE
-          WHEN CAST(l.principal AS REAL) - COALESCE(
-            (SELECT SUM(CAST(lp.paid_amount AS REAL)) FROM loan_payments lp
-             WHERE lp.loan_id = l.id AND lp.status = 'paid'), 0
-          ) <= 0 THEN 'settled'
-          WHEN l.expected_due_date < date('now') THEN 'overdue'
-          ELSE 'active'
-        END AS computed_status
-      FROM loans l
-    `;
+    const innerWhere = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const statusFilter = status ? 'WHERE computed_status = ?' : '';
+    const statusBindings = status ? [status] : [];
+    const offset = (page - 1) * PAGE_SIZE;
 
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     return this.db.prepare(`
-      SELECT * FROM (${innerQuery}) AS sub ${where}
+      SELECT * FROM (${LOAN_INNER_QUERY} ${innerWhere}) AS sub
+      ${statusFilter}
       ORDER BY ${safeSort} ${safeDir}
-    `).all(...bindings) as Record<string, unknown>[];
+      LIMIT ${PAGE_SIZE} OFFSET ${offset}
+    `).all(...bindings, ...statusBindings) as Record<string, unknown>[];
   }
 
   findById(id: number): (Record<string, unknown> & { remaining_balance: number }) | null {

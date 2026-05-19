@@ -31,6 +31,8 @@ export type UpdateLoanDto = Partial<CreateLoanDto>;
 export interface ListLoansParams {
   type?: string;
   status?: string;
+  search?: string;
   sort?: string;
   sortDir?: string;
+  page?: number;
 }

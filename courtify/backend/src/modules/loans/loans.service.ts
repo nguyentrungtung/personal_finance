@@ -3,6 +3,7 @@ import type { LoansRepository } from './loans.repository.js';
 import type { LedgerService } from '../ledger/ledger.service.js';
 import type { DashboardService } from '../dashboard/dashboard.service.js';
 import type { CreateLoanDto, UpdateLoanDto, ListLoansParams } from './loans.types.js';
+import { paginate } from '../../shared/pagination.js';
 
 const LIQUIDITY_ASSET_CLASS_ID = 3; // loans affect liquidity class
 
@@ -14,11 +15,13 @@ export class LoansService {
   ) {}
 
   listAll(params: ListLoansParams = {}) {
-    return this.repo.findAll(params).map(r => ({
+    const rows = this.repo.findAll(params).map(r => ({
       ...r,
       status: r.computed_status,
       remaining_balance: String((r.remaining_balance as number).toFixed(4)),
     }));
+    const total_count = this.repo.countFiltered(params);
+    return paginate(rows, total_count, params.page ?? 1);
   }
 
   getById(id: number) {

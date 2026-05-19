@@ -24,3 +24,12 @@ export interface CreateSavingsDto {
 }
 
 export type UpdateSavingsDto = Partial<CreateSavingsDto & { status: string }>;
+
+export interface ListSavingsParams {
+  search?: string;
+  status?: string;
+  instrument_type?: string;
+  sort?: string;
+  sortDir?: string;
+  page?: number;
+}

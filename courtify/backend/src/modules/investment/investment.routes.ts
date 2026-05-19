@@ -5,6 +5,7 @@ import { asyncHandler } from '../../infrastructure/middleware/asyncHandler.middl
 import { validateBody } from '../../infrastructure/middleware/validateBody.middleware.js';
 import { ok, created } from '../../shared/response.js';
 import type { InvestmentService } from './investment.service.js';
+import type { BuyLotDto, SellDto } from './investment.types.js';
 
 const BuySchema = z.object({
   asset_class_id: z.number().int().positive(),
@@ -37,6 +38,10 @@ const QuerySchema = z.object({
   asset_class: z.string().optional(),
   subtype: z.string().optional(),
   view: z.enum(['lot', 'aggregated']).default('lot'),
+  search: z.string().max(200).optional(),
+  sort: z.string().optional(),
+  sort_dir: z.enum(['asc', 'desc']).default('desc'),
+  page: z.coerce.number().int().min(1).default(1),
 });
 
 const HistoryQuerySchema = z.object({
@@ -50,28 +55,37 @@ export function createInvestmentRouter(service: InvestmentService): Router {
 
   router.get('/', requireAuth, asyncHandler(async (req, res) => {
     const params = QuerySchema.parse(req.query);
-    const rows = service.listLots({
+    const result = service.listLots({
       assetClass: params.asset_class,
       subtype: params.subtype,
       view: params.view,
+      search: params.search,
+      sort: params.sort,
+      sortDir: params.sort_dir,
+      page: params.page,
     });
-    return ok(res, rows, { count: (rows as unknown[]).length });
+    // aggregated view returns a plain array (no pagination)
+    if (params.view === 'aggregated') {
+      const rows = result as unknown[];
+      return ok(res, rows, { count: rows.length });
+    }
+    const r = result as { rows: unknown[]; total_count: number; current_page: number; total_pages: number; per_page: number };
+    return ok(res, r.rows, {
+      count: r.total_count,
+      current_page: r.current_page,
+      total_pages: r.total_pages,
+      per_page: r.per_page,
+    });
   }));
 
   router.post('/', requireAuth, validateBody(BuySchema), asyncHandler(async (req, res) => {
-    const lot = service.buyLot(req.body as z.infer<typeof BuySchema>);
+    const lot = service.buyLot(req.body as BuyLotDto);
     return created(res, lot);
   }));
 
   router.post('/sell', requireAuth, validateBody(SellSchema), asyncHandler(async (req, res) => {
-    const result = service.sellLot(req.body as z.infer<typeof SellSchema>);
+    const result = service.sellLot(req.body as SellDto);
     return ok(res, result);
-  }));
-
-  router.patch('/:id/price', requireAuth, validateBody(PriceUpdateSchema), asyncHandler(async (req, res) => {
-    const id = parseInt(req.params.id, 10);
-    const lot = service.updateLotPrice(id, (req.body as z.infer<typeof PriceUpdateSchema>).current_price_per_unit);
-    return ok(res, lot);
   }));
 
   router.get('/history', requireAuth, asyncHandler(async (req, res) => {
@@ -82,6 +96,17 @@ export function createInvestmentRouter(service: InvestmentService): Router {
       dateTo: params.date_to,
     });
     return ok(res, rows, { count: (rows as unknown[]).length });
+  }));
+
+  router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    return ok(res, service.getLotById(id));
+  }));
+
+  router.patch('/:id/price', requireAuth, validateBody(PriceUpdateSchema), asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    const lot = service.updateLotPrice(id, (req.body as z.infer<typeof PriceUpdateSchema>).current_price_per_unit);
+    return ok(res, lot);
   }));
 
   return router;

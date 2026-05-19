@@ -1,33 +1,50 @@
 import type Database from 'better-sqlite3';
 import { NotFoundError } from '../../shared/errors.js';
+import { PAGE_SIZE } from '../../shared/pagination.js';
 import type { ListLotsParams, FifoLot } from './investment.types.js';
+
+const ALLOWED_SORT = ['purchase_date', 'asset_name', 'buy_price_per_unit', 'current_price_per_unit', 'remaining_volume'];
 
 export class InvestmentRepository {
   constructor(private readonly db: Database.Database) {}
 
+  countFiltered(params: ListLotsParams = {}): number {
+    const { assetClass, subtype, search } = params;
+    const conditions: string[] = ["al.status IN ('active', 'partial_closed')"];
+    const bindings: (string | number)[] = [];
+    if (assetClass) { conditions.push('ac.code = ?'); bindings.push(assetClass); }
+    if (subtype) { conditions.push('al.asset_subtype = ?'); bindings.push(subtype); }
+    if (search?.trim()) {
+      conditions.push('al.asset_name LIKE ?');
+      bindings.push(`%${search.trim()}%`);
+    }
+    return (this.db.prepare(`
+      SELECT COUNT(*) AS cnt FROM asset_lots al
+      JOIN asset_classes ac ON al.asset_class_id = ac.id
+      WHERE ${conditions.join(' AND ')}
+    `).get(...bindings) as { cnt: number }).cnt;
+  }
+
   findAll(params: ListLotsParams = {}) {
-    const { assetClass, subtype, view = 'lot' } = params;
+    const { assetClass, subtype, search, view = 'lot', sort = 'purchase_date', sortDir = 'desc', page = 1 } = params;
 
     const conditions: string[] = ["al.status IN ('active', 'partial_closed')"];
     const bindings: (string | number)[] = [];
 
-    if (assetClass) {
-      conditions.push('ac.code = ?');
-      bindings.push(assetClass);
-    }
-    if (subtype) {
-      conditions.push('al.asset_subtype = ?');
-      bindings.push(subtype);
+    if (assetClass) { conditions.push('ac.code = ?'); bindings.push(assetClass); }
+    if (subtype) { conditions.push('al.asset_subtype = ?'); bindings.push(subtype); }
+    if (search?.trim()) {
+      conditions.push('al.asset_name LIKE ?');
+      bindings.push(`%${search.trim()}%`);
     }
 
     const where = `WHERE ${conditions.join(' AND ')}`;
 
+    // aggregated view: no pagination (always small result set grouped by asset)
     if (view === 'aggregated') {
       return this.db.prepare(`
         SELECT
-          al.asset_name,
-          al.asset_subtype,
-          al.unit_label,
+          al.asset_name, al.asset_subtype, al.unit_label,
           ac.code AS asset_class_code,
           SUM(CAST(al.remaining_volume AS REAL)) AS total_remaining_volume,
           SUM(CAST(al.remaining_volume AS REAL) * CAST(al.buy_price_per_unit AS REAL))
@@ -46,6 +63,10 @@ export class InvestmentRepository {
       `).all(...bindings);
     }
 
+    const safeSort = ALLOWED_SORT.includes(sort) ? `al.${sort}` : 'al.purchase_date';
+    const safeDir = sortDir.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+    const offset = (page - 1) * PAGE_SIZE;
+
     return this.db.prepare(`
       SELECT al.*,
         ac.code AS asset_class_code,
@@ -59,7 +80,8 @@ export class InvestmentRepository {
       JOIN asset_classes ac ON al.asset_class_id = ac.id
       LEFT JOIN institutions i ON al.institution_id = i.id
       ${where}
-      ORDER BY al.purchase_date DESC
+      ORDER BY ${safeSort} ${safeDir}
+      LIMIT ${PAGE_SIZE} OFFSET ${offset}
     `).all(...bindings);
   }
 

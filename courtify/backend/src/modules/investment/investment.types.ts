@@ -2,6 +2,10 @@ export interface ListLotsParams {
   assetClass?: string;
   subtype?: string;
   view?: 'lot' | 'aggregated';
+  search?: string;
+  sort?: string;
+  sortDir?: string;
+  page?: number;
 }
 
 export interface BuyLotDto {

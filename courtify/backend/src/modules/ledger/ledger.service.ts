@@ -2,6 +2,7 @@ import type { LedgerRepository } from './ledger.repository.js';
 import { NotFoundError } from '../../shared/errors.js';
 import type { AutoLedgerParams, SourceModule, ListParams } from './ledger.types.js';
 import type { DashboardService } from '../dashboard/dashboard.service.js';
+import { paginate } from '../../shared/pagination.js';
 
 const ALLOWED_SORT = ['transaction_date', 'amount', 'description', 'status'];
 
@@ -39,9 +40,12 @@ export class LedgerService {
     const conditions: string[] = ['le.deleted_at IS NULL'];
     const bindings: (string | number)[] = [];
 
-    // Exclude voided entries by default — they are accounting corrections,
-    // not normal transactions. User must explicitly opt-in to see them.
-    if (!includeVoided) {
+    // Terminal statuses ('voided', 'reversed') require seeing entries that would
+    // otherwise be hidden. When explicitly filtering by one of these, skip the
+    // voided_at IS NULL guard so the filter actually returns results.
+    const isTerminalStatusFilter = status === 'voided' || status === 'reversed';
+
+    if (!includeVoided && !isTerminalStatusFilter) {
       conditions.push('le.voided_at IS NULL');
     }
 
@@ -61,8 +65,6 @@ export class LedgerService {
       conditions.push('le.transaction_date <= ?');
       bindings.push(dateTo + 'T23:59:59.999Z');
     }
-    // When filtering by status, include voided regardless of includeVoided flag
-    // so user can explicitly filter status=voided to see them
     if (status) {
       conditions.push('le.status = ?');
       bindings.push(status);
@@ -76,7 +78,7 @@ export class LedgerService {
     const total_count = this.repo.countEntries(conditions, bindings);
     const rows = this.repo.listEntries(conditions, bindings, safeSort, safeDir, page);
 
-    return { rows, total_count, current_page: page };
+    return paginate(rows, total_count, page);
   }
 
   getEntryById(id: number) {

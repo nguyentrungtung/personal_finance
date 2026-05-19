@@ -37,3 +37,11 @@ export interface CreateMetalDto {
 }
 
 export type UpdateMetalDto = Partial<CreateMetalDto>;
+
+export interface ListMetalsParams {
+  search?: string;
+  metal_type?: string;
+  sort?: string;
+  sortDir?: string;
+  page?: number;
+}

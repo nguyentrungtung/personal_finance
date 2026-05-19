@@ -5,6 +5,7 @@ import { asyncHandler } from '../../infrastructure/middleware/asyncHandler.middl
 import { validateBody } from '../../infrastructure/middleware/validateBody.middleware.js';
 import { ok, created } from '../../shared/response.js';
 import type { LoansService } from './loans.service.js';
+import type { CreateLoanDto } from './loans.types.js';
 
 const LoanSchema = z.object({
   loan_type: z.enum(['lent', 'borrowed']),
@@ -27,8 +28,10 @@ const PaymentSchema = z.object({
 const QuerySchema = z.object({
   type: z.string().optional(),
   status: z.string().optional(),
+  search: z.string().max(200).optional(),
   sort: z.string().optional(),
-  sort_dir: z.enum(['asc', 'desc']).optional(),
+  sort_dir: z.enum(['asc', 'desc']).default('desc'),
+  page: z.coerce.number().int().min(1).default(1),
 });
 
 export function createLoansRouter(service: LoansService): Router {
@@ -36,18 +39,30 @@ export function createLoansRouter(service: LoansService): Router {
 
   router.get('/', requireAuth, asyncHandler(async (req, res) => {
     const params = QuerySchema.parse(req.query);
-    const rows = service.listAll({
+    const result = service.listAll({
       type: params.type,
       status: params.status,
+      search: params.search,
       sort: params.sort,
       sortDir: params.sort_dir,
+      page: params.page,
     });
-    return ok(res, rows, { count: rows.length });
+    return ok(res, result.rows, {
+      count: result.total_count,
+      current_page: result.current_page,
+      total_pages: result.total_pages,
+      per_page: result.per_page,
+    });
   }));
 
   router.post('/', requireAuth, validateBody(LoanSchema), asyncHandler(async (req, res) => {
-    const loan = service.create(req.body as z.infer<typeof LoanSchema>);
+    const loan = service.create(req.body as CreateLoanDto);
     return created(res, loan);
+  }));
+
+  router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    return ok(res, service.getById(id));
   }));
 
   router.put('/:id', requireAuth, validateBody(LoanSchema.partial()), asyncHandler(async (req, res) => {
@@ -71,7 +86,7 @@ export function createLoansRouter(service: LoansService): Router {
 
   router.post('/:id/payments', requireAuth, validateBody(PaymentSchema), asyncHandler(async (req, res) => {
     const id = parseInt(req.params.id, 10);
-    const payment = service.addPayment(id, req.body as z.infer<typeof PaymentSchema>);
+    const payment = service.addPayment(id, req.body as { paid_amount: string; due_date: string; notes?: string });
     return created(res, payment);
   }));
 

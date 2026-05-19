@@ -105,7 +105,6 @@ export function Ledger() {
   // ── Void ───────────────────────────────────────────────────────────────────
   const [voidTarget, setVoidTarget] = useState<LedgerEntry | null>(null);
   const [voidReason, setVoidReason] = useState('');
-  const [showVoided, setShowVoided] = useState(false);
 
   // ── Reversal ───────────────────────────────────────────────────────────────
   const [reverseTarget, setReverseTarget] = useState<LedgerEntry | null>(null);
@@ -151,7 +150,6 @@ export function Ledger() {
       ...(filterDateFrom && { date_from: filterDateFrom }),
       ...(filterDateTo && { date_to: filterDateTo }),
       ...(searchQuery && { search: searchQuery }),
-      ...(showVoided && { include_voided: 'true' }),
       sort: sortCol, sort_dir: sortDir,
       page: String(page),
     });
@@ -160,11 +158,10 @@ export function Ledger() {
       const res = await api.get<LedgerResponse>(`/api/v1/ledger?${params.toString()}`);
       setEntries(res.data);
       setTotalCount(res.meta.count);
-      // Clear selection when data changes
       setSelectedIds(new Set());
     } catch { /* handled by api client */ }
     finally { setIsLoading(false); }
-  }, [page, filterAssetClass, filterEntryType, filterStatus, filterDateFrom, filterDateTo, searchQuery, showVoided, sortCol, sortDir]);
+  }, [page, filterAssetClass, filterEntryType, filterStatus, filterDateFrom, filterDateTo, searchQuery, sortCol, sortDir]);
 
   // Debounce search input — wait 400ms after user stops typing
   const handleSearchChange = (value: string) => {
@@ -398,14 +395,15 @@ export function Ledger() {
           <input type="date" className="input w-auto stack-on-mobile:flex-1" aria-label={t('ledger.date')} value={filterDateFrom} onChange={(e) => { setFilterDateFrom(e.target.value); setPage(1); }} />
           <input type="date" className="input w-auto stack-on-mobile:flex-1" aria-label={t('ledger.date')} value={filterDateTo} onChange={(e) => { setFilterDateTo(e.target.value); setPage(1); }} />
         </div>
-        {/* Toggle show voided entries */}
+        {/* Quick-filter: show only voided entries — toggles filterStatus between 'voided' and '' */}
         <button
           type="button"
-          onClick={() => { setShowVoided(v => !v); setPage(1); }}
-          className={`input w-auto text-xs flex items-center gap-1.5 ${showVoided ? 'border-amber-500 text-amber-400' : 'text-text-muted'}`}
-          aria-pressed={showVoided}
+          onClick={() => { setFilterStatus(s => s === 'voided' ? '' : 'voided'); setPage(1); }}
+          className={`input w-auto text-xs flex items-center gap-1.5 ${filterStatus === 'voided' ? 'border-brand-red text-brand-red' : 'text-text-muted'}`}
+          aria-pressed={filterStatus === 'voided'}
+          title={filterStatus === 'voided' ? t('ledger.allStatuses') : t('ledger.showVoided')}
         >
-          <span className={`w-2 h-2 rounded-full ${showVoided ? 'bg-amber-400' : 'bg-surface-border'}`} />
+          <span className={`w-2 h-2 rounded-full ${filterStatus === 'voided' ? 'bg-brand-red' : 'bg-surface-border'}`} />
           {t('ledger.showVoided')}
         </button>
       </div>

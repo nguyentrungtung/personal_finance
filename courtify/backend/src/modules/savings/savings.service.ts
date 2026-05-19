@@ -1,7 +1,8 @@
 import type { SavingsRepository } from './savings.repository.js';
 import type { LedgerService } from '../ledger/ledger.service.js';
 import type { DashboardService } from '../dashboard/dashboard.service.js';
-import type { CreateSavingsDto, UpdateSavingsDto } from './savings.types.js';
+import type { CreateSavingsDto, UpdateSavingsDto, ListSavingsParams } from './savings.types.js';
+import { paginate } from '../../shared/pagination.js';
 
 const LIQUIDITY_ASSET_CLASS_ID = 3; // asset_classes seed: liquidity=3
 
@@ -12,12 +13,14 @@ export class SavingsService {
     private readonly dashboard: DashboardService,
   ) {}
 
-  listAll() {
-    return this.repo.findAll().map(r => ({
+  listAll(params: ListSavingsParams = {}) {
+    const rows = this.repo.findAll(params).map(r => ({
       ...r,
       accrued_interest: String(Math.max(0, r.accrued_interest_raw ?? 0).toFixed(4)),
       status: r.computed_status,
     }));
+    const total_count = this.repo.countFiltered(params);
+    return paginate(rows, total_count, params.page ?? 1);
   }
 
   getById(id: number) {
